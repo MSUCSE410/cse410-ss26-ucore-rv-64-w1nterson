@@ -3,6 +3,8 @@
 #include "loader.h"
 #include "trap.h"
 
+#include "timer.h"
+
 struct proc pool[NPROC];
 char kstack[NPROC][PAGE_SIZE];
 __attribute__((aligned(4096))) char ustack[NPROC][PAGE_SIZE];
@@ -31,9 +33,10 @@ void proc_init(void)
 		p->kstack = (uint64)kstack[p - pool];
 		p->ustack = (uint64)ustack[p - pool];
 		p->trapframe = (struct trapframe *)trapframe[p - pool];
-		/*
-		* LAB1: you may need to initialize your new fields of proc here
-		*/
+		// LAB1 init
+    	p->started = 0;
+    	p->start_cycle = 0;
+    	memset(p->syscall_times, 0, sizeof(p->syscall_times));
 	}
 	idle.kstack = (uint64)boot_stack_top;
 	idle.pid = 0;
@@ -62,6 +65,11 @@ struct proc *allocproc(void)
 found:
 	p->pid = allocpid();
 	p->state = USED;
+
+	p->started = 0;
+	p->start_cycle = 0;
+	memset(p->syscall_times, 0, sizeof(p->syscall_times));
+
 	memset(&p->context, 0, sizeof(p->context));
 	memset(p->trapframe, 0, PAGE_SIZE);
 	memset((void *)p->kstack, 0, PAGE_SIZE);
@@ -81,9 +89,12 @@ void scheduler(void)
 	for (;;) {
 		for (p = pool; p < &pool[NPROC]; p++) {
 			if (p->state == RUNNABLE) {
-				/*
-				* LAB1: you may need to init proc start time here
-				*/
+
+				if (!p->started) {
+    			p->start_cycle = get_cycle();   // get current mtime counter :contentReference[oaicite:4]{index=4}
+    			p->started = 1;
+  				}
+
 				p->state = RUNNING;
 				current_proc = p;
 				swtch(&idle.context, &p->context);
