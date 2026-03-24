@@ -18,9 +18,11 @@ int finished()
 
 void loader_init()
 {
+	/*
     if ((uint64)ekernel >= BASE_ADDRESS) {
         panic("kernel too large...\n");
     }
+	*/
     app_info_ptr = (uint64 *)_app_num;
     app_num = *app_info_ptr;
     app_info_ptr++;
