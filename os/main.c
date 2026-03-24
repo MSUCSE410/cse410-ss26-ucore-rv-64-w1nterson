@@ -13,15 +13,12 @@ void clean_bss()
 
 void main()
 {
-    clean_bss();
-    printf("hello world!\n");
-    kinit();        // must be first: sets up kalloc free list
-    kvm_init();     // second: needs kalloc, enables paging
-    proc_init();    // third: needs kernel_pagetable for idle
-    loader_init();
-    trap_init();
-    timer_init();
-    run_all_app();
-    infof("start scheduler!");
-    scheduler();
+	clean_bss();
+	proc_init();
+	loader_init();
+	trap_init();
+	timer_init();
+	run_all_app();
+	infof("start scheduler!");
+	scheduler();
 }
