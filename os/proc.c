@@ -24,25 +24,27 @@ struct proc *curr_proc()
     return current_proc;
 }
 
+extern pagetable_t kernel_pagetable;  // defined in vm.c
+
 void proc_init(void)
 {
     struct proc *p;
     for (p = pool; p < &pool[NPROC]; p++) {
-        p->state      = UNUSED;
-        p->kstack     = (uint64)kstack[p - pool];
-        p->ustack     = (uint64)ustack[p - pool];
-        p->trapframe  = (struct trapframe *)trapframe[p - pool];
-        p->pagetable  = 0;
-        p->max_page   = 0;
-        p->started    = 0;
+        p->state       = UNUSED;
+        p->kstack      = (uint64)kstack[p - pool];
+        p->ustack      = (uint64)ustack[p - pool];
+        p->trapframe   = (struct trapframe *)trapframe[p - pool];
+        p->pagetable   = 0;
+        p->max_page    = 0;
+        p->started     = 0;
         p->start_cycle = 0;
         memset(p->syscall_times, 0, sizeof(p->syscall_times));
     }
-    idle.kstack = (uint64)boot_stack_top;
-    idle.pid    = 0;
-    current_proc = &idle;
+    idle.kstack    = (uint64)boot_stack_top;
+    idle.pid       = 0;
+    idle.pagetable = kernel_pagetable;  // <-- critical: idle needs a valid pagetable
+    current_proc   = &idle;
 }
-
 int allocpid()
 {
     static int PID = 1;
