@@ -2,6 +2,7 @@
 #define PROC_H
 
 #include "types.h"
+#include "riscv.h"
 
 #define NPROC (16)
 
@@ -51,6 +52,10 @@ struct proc {
 	uint64 kstack; // Virtual address of kernel stack
 	struct trapframe *trapframe; // data page for trampoline.S
 	struct context context; // swtch() here to run process
+
+	pagetable_t pagetable;  
+    uint64 max_page;        
+
 	// fields for sys_task_info
   	uint64 start_cycle;                          // cycle count when first scheduled
   	unsigned int syscall_times[MAX_SYSCALL_NUM]; // syscall histogram

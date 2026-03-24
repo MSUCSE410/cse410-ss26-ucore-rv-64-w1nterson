@@ -40,6 +40,7 @@ void proc_init(void)
 	}
 	idle.kstack = (uint64)boot_stack_top;
 	idle.pid = 0;
+	idle.pagetable = kernel_pagetable; 
 	current_proc = &idle;
 }
 
