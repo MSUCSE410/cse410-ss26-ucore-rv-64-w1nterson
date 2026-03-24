@@ -65,7 +65,7 @@ pagetable_t bin_loader(uint64 start, uint64 end, struct proc *p)
     if (stack == 0)
         panic("bin_loader: no memory for stack");
     memset(stack, 0, PGSIZE);
-    if (mappages(pg, ustack_va, USTACK_SIZE, (uint64)stack,
+    if (mappages(pg, ustack_va, USER_STACK_SIZE, (uint64)stack,
                  PTE_U | PTE_R | PTE_W | PTE_X) != 0)
         panic("bin_loader: map stack failed");
 
