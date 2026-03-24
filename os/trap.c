@@ -75,15 +75,14 @@ void usertrap()
 		case InstructionPageFault:
 		case LoadMisaligned:
 		case LoadPageFault:
-			errorf("%d in application, bad addr = %p, bad instruction = %p, "
-			       "core dumped.",
-			       cause, r_stval(), trapframe->epc);
-			exit(-2);
-			break;
+    		errorf("%d in application, bad addr = %p, bad instruction = %p, core dumped.",
+            cause, r_stval(), trapframe->epc);
+    		exit(-2);
+    		break;
 		case IllegalInstruction:
-			errorf("IllegalInstruction in application, core dumped.");
-			exit(-3);
-			break;
+    		errorf("IllegalInstruction in application, core dumped.");
+    		exit(-3);
+    		break;
 		default:
 			unknown_trap();
 			break;
