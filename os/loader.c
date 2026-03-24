@@ -71,8 +71,8 @@ pagetable_t bin_loader(uint64 start, uint64 end, struct proc *p)
 
     p->ustack           = ustack_va;
     p->trapframe->epc   = BASE_ADDRESS;
-    p->trapframe->sp    = ustack_va + USTACK_SIZE;
-    p->max_page         = PGROUNDUP(ustack_va + USTACK_SIZE - 1) / PGSIZE;
+    p->trapframe->sp    = ustack_va + USER_STACK_SIZE;
+    p->max_page         = PGROUNDUP(ustack_va + USER_STACK_SIZE - 1) / PGSIZE;
 
     return pg;
 }
