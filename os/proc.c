@@ -67,7 +67,7 @@ struct proc *allocproc(void)
 found:
 	p->pid = allocpid();
 	p->state = USED;
-
+	p->pagetable = kernel_pagetable;
 	p->started = 0;
 	p->start_cycle = 0;
 	memset(p->syscall_times, 0, sizeof(p->syscall_times));
@@ -131,9 +131,22 @@ void yield(void)
 // Exit the current process.
 void exit(int code)
 {
-	struct proc *p = curr_proc();
-	infof("proc %d exit with %d", p->pid, code);
-	p->state = UNUSED;
-	finished();
-	sched();
+    struct proc *p = curr_proc();
+    infof("proc %d exit with %d", p->pid, code);
+
+    if (p->pagetable && p->pagetable != kernel_pagetable) {
+        uvmunmap(p->pagetable, TRAMPOLINE, 1, 0);
+        uvmunmap(p->pagetable, TRAPFRAME,  1, 0);
+        uint64 base_page = BASE_ADDRESS / PGSIZE;
+        uint64 npages    = p->max_page - base_page;
+        if (npages > 0)
+            uvmunmap(p->pagetable, BASE_ADDRESS, npages, 1);
+        kfree(p->pagetable);
+        p->pagetable = kernel_pagetable;
+        p->max_page  = 0;
+    }
+
+    p->state = UNUSED;
+    finished();
+    sched();
 }
