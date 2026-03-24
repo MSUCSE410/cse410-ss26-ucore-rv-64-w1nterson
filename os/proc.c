@@ -112,18 +112,25 @@ void exit(int code)
     infof("proc %d exit with %d", p->pid, code);
 
     if (p->pagetable && p->max_page > 0) {
-        // Unmap trampoline and trapframe — do NOT free physical memory,
-        // trampoline is kernel code, trapframe is a static array in proc.c
+        infof("exit: pagetable=%p max_page=%d", p->pagetable, p->max_page);
+        infof("exit: ustack=%p BASE_ADDRESS=%p", p->ustack, BASE_ADDRESS);
+
+        infof("exit: unmapping TRAMPOLINE");
         uvmunmap(p->pagetable, TRAMPOLINE, 1, 0);
-        uvmunmap(p->pagetable, TRAPFRAME,  1, 0);
 
-        // Unmap everything from BASE_ADDRESS to max_page — DO free physical
-        // memory (binary pages + stack page allocated by kalloc in bin_loader)
-        uint64 base_page = BASE_ADDRESS / PGSIZE;
-        uint64 npages    = p->max_page - base_page;
-        uvmunmap(p->pagetable, BASE_ADDRESS, npages, 1);
+        infof("exit: unmapping TRAPFRAME");
+        uvmunmap(p->pagetable, TRAPFRAME, 1, 0);
 
-        // Free the root page table page itself
+        uint64 binary_pages = (p->ustack - BASE_ADDRESS) / PGSIZE;
+        infof("exit: unmapping binary, %d pages from %p", binary_pages, BASE_ADDRESS);
+        if (binary_pages > 0)
+            uvmunmap(p->pagetable, BASE_ADDRESS, binary_pages, 0);
+
+        uint64 stack_pages = USTACK_SIZE / PGSIZE;
+        infof("exit: unmapping stack, %d pages from %p", stack_pages, p->ustack);
+        uvmunmap(p->pagetable, p->ustack, stack_pages, 1);
+
+        infof("exit: freeing pagetable=%p", p->pagetable);
         kfree(p->pagetable);
         p->pagetable = 0;
         p->max_page  = 0;
