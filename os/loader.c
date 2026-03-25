@@ -62,20 +62,14 @@ pagetable_t bin_loader(uint64 start, uint64 end, struct proc *p)
 // load all apps and init the corresponding `proc` structure.
 int run_all_app()
 {
-	for (int i = 0; i < app_num; ++i) {
-		struct proc *p = allocproc();
-		struct trapframe *trapframe = p->trapframe;
-		load_app(i, app_info_ptr);
-		uint64 entry = BASE_ADDRESS + i * MAX_APP_SIZE;
-		tracef("load app %d at %p", i, entry);
-		trapframe->epc = entry;
-		trapframe->sp = (uint64)p->ustack + USTACK_SIZE;
-		p->state = RUNNABLE;
-		
-		p->started = 0;
-		p->start_cycle = 0;
-		memset(p->syscall_times, 0, sizeof(p->syscall_times));
-
-	}
-	return 0;
+    for (int i = 0; i < app_num; ++i) {
+        struct proc *p = allocproc();
+        tracef("load app %d", i);
+        bin_loader(app_info_ptr[i], app_info_ptr[i + 1], p);
+        p->state      = RUNNABLE;
+        p->started    = 0;
+        p->start_cycle = 0;
+        memset(p->syscall_times, 0, sizeof(p->syscall_times));
+    }
+    return 0;
 }
