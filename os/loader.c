@@ -69,7 +69,7 @@ int run_all_app()
 		uint64 entry = BASE_ADDRESS + i * MAX_APP_SIZE;
 		tracef("load app %d at %p", i, entry);
 		trapframe->epc = entry;
-		trapframe->sp = (uint64)p->ustack + USER_STACK_SIZE;
+		trapframe->sp = (uint64)p->ustack + USTACK_SIZE;
 		p->state = RUNNABLE;
 		
 		p->started = 0;
