@@ -5,15 +5,17 @@
 #include "timer.h"
 #include "trap.h"
 
-uint64 sys_write(int fd, char *str, uint len)
+uint64 sys_write(int fd, uint64 str_va, uint len)
 {
-	debugf("sys_write fd = %d str = %x, len = %d", fd, str, len);
-	if (fd != STDOUT)
-		return -1;
-	for (int i = 0; i < len; ++i) {
-		console_putchar(str[i]);
-	}
-	return len;
+    if (fd != STDOUT)
+        return -1;
+    struct proc *p = curr_proc();
+    for (int i = 0; i < len; ++i) {
+        uint64 pa = useraddr(p->pagetable, str_va + i);
+        if (pa == 0) return -1;
+        console_putchar(*(char *)pa);
+    }
+    return len;
 }
 
 __attribute__((noreturn)) void sys_exit(int code)
@@ -81,8 +83,8 @@ void syscall()
 
 	switch (id) {
 	case SYS_write:
-		ret = sys_write(args[0], (char *)args[1], args[2]);
-		break;
+    	ret = sys_write(args[0], args[1], args[2]);
+    	break;
 	case SYS_exit:
 		sys_exit(args[0]);
 		// __builtin_unreachable();
