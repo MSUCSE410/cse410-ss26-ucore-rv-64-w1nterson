@@ -6,6 +6,7 @@
 #include "trap.h"
 #include "vm.h"
 
+
 uint64 sys_write(int fd, uint64 va, uint len)
 {
     debugf("sys_write fd = %d va = %x, len = %d", fd, va, len);
