@@ -8,6 +8,7 @@
 
 int finished();
 void loader_init();
+
 int run_all_app();
 pagetable_t bin_loader(uint64 start, uint64 end, struct proc *p);
 
