@@ -13,15 +13,15 @@ void clean_bss()
 
 void main()
 {
-	clean_bss();
-	printf("hello world!\n");
-	proc_init();
-	kinit();
-	kvm_init();
-	loader_init();
-	trap_init();
-	timer_init();
-	run_all_app();
-	infof("start scheduler!");
-	scheduler();
+    clean_bss();
+    printf("hello world!\n");
+    kinit();        // 1. set up physical memory allocator
+    kvm_init();     // 2. set up kernel page table, enable paging
+    proc_init();    // 3. now kernel_pagetable is valid for idle
+    loader_init();
+    trap_init();
+    timer_init();
+    run_all_app();
+    infof("start scheduler!");
+    scheduler();
 }
