@@ -2,151 +2,116 @@
 #include "defs.h"
 #include "loader.h"
 #include "trap.h"
-
+#include "vm.h"
 #include "timer.h"
 
 struct proc pool[NPROC];
-char kstack[NPROC][PAGE_SIZE];
-__attribute__((aligned(4096))) char ustack[NPROC][PAGE_SIZE];
-__attribute__((aligned(4096))) char trapframe[NPROC][PAGE_SIZE];
+__attribute__((aligned(16))) char kstack[NPROC][PAGE_SIZE];
+__attribute__((aligned(4096))) char trapframe[NPROC][TRAP_PAGE_SIZE];
 
 extern char boot_stack_top[];
-extern pagetable_t kernel_pagetable; 
+extern pagetable_t kernel_pagetable;
 struct proc *current_proc;
 struct proc idle;
 
-int threadid()
-{
-	return curr_proc()->pid;
-}
+int threadid() { return curr_proc()->pid; }
+struct proc *curr_proc() { return current_proc; }
 
-struct proc *curr_proc()
-{
-	return current_proc;
-}
-
-// initialize the proc table at boot time.
 void proc_init(void)
 {
-	struct proc *p;
-	for (p = pool; p < &pool[NPROC]; p++) {
-		p->state = UNUSED;
-		p->kstack = (uint64)kstack[p - pool];
-		p->ustack = (uint64)ustack[p - pool];
-		p->trapframe = (struct trapframe *)trapframe[p - pool];
-		// Initialize tracked stats
-    	p->started = 0;
-    	p->start_cycle = 0;
-    	memset(p->syscall_times, 0, sizeof(p->syscall_times));
-	}
-	idle.kstack = (uint64)boot_stack_top;
-	idle.pid = 0;
-	idle.pagetable = kernel_pagetable; 
-	current_proc = &idle;
+    struct proc *p;
+    for (p = pool; p < &pool[NPROC]; p++) {
+        p->state    = UNUSED;
+        p->kstack   = (uint64)kstack[p - pool];
+        p->trapframe = (struct trapframe *)trapframe[p - pool];
+        // LAB1
+        p->started    = 0;
+        p->start_cycle = 0;
+        memset(p->syscall_times, 0, sizeof(p->syscall_times));
+    }
+    idle.kstack    = (uint64)boot_stack_top;
+    idle.pid       = 0;
+    idle.pagetable = kernel_pagetable;
+    current_proc   = &idle;
 }
 
 int allocpid()
 {
-	static int PID = 1;
-	return PID++;
+    static int PID = 1;
+    return PID++;
 }
 
-// Look in the process table for an UNUSED proc.
-// If found, initialize state required to run in the kernel.
-// If there are no free procs, or a memory allocation fails, return 0.
 struct proc *allocproc(void)
 {
-	struct proc *p;
-	for (p = pool; p < &pool[NPROC]; p++) {
-		if (p->state == UNUSED) {
-			goto found;
-		}
-	}
-	return 0;
+    struct proc *p;
+    for (p = pool; p < &pool[NPROC]; p++) {
+        if (p->state == UNUSED)
+            goto found;
+    }
+    return 0;
 
 found:
-	p->pid = allocpid();
-	p->state = USED;
-	p->pagetable = kernel_pagetable;
-	p->started = 0;
-	p->start_cycle = 0;
-	memset(p->syscall_times, 0, sizeof(p->syscall_times));
-
-	memset(&p->context, 0, sizeof(p->context));
-	memset(p->trapframe, 0, PAGE_SIZE);
-	memset((void *)p->kstack, 0, PAGE_SIZE);
-	p->context.ra = (uint64)usertrapret;
-	p->context.sp = p->kstack + PAGE_SIZE;
-	return p;
+    p->pid      = allocpid();
+    p->state    = USED;
+    p->pagetable = 0;
+    p->ustack   = 0;
+    p->max_page = 0;
+    // LAB1
+    p->started    = 0;
+    p->start_cycle = 0;
+    memset(p->syscall_times, 0, sizeof(p->syscall_times));
+    memset(&p->context,  0, sizeof(p->context));
+    memset((void *)p->kstack,   0, KSTACK_SIZE);
+    memset((void *)p->trapframe, 0, TRAP_PAGE_SIZE);
+    p->context.ra = (uint64)usertrapret;
+    p->context.sp = p->kstack + KSTACK_SIZE;
+    return p;
 }
 
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
 void scheduler(void)
 {
-	struct proc *p;
-	for (;;) {
-		for (p = pool; p < &pool[NPROC]; p++) {
-			if (p->state == RUNNABLE) {
-				
-				// Record inital time to compute runtime
-				if (!p->started) {
-    			p->start_cycle = get_cycle();   // get current mtime counter :contentReference[oaicite:4]{index=4}
-    			p->started = 1;
-  				}
-
-				p->state = RUNNING;
-				current_proc = p;
-				swtch(&idle.context, &p->context);
-			}
-		}
-	}
+    struct proc *p;
+    for (;;) {
+        for (p = pool; p < &pool[NPROC]; p++) {
+            if (p->state == RUNNABLE) {
+                // LAB1
+                if (!p->started) {
+                    p->start_cycle = get_cycle();
+                    p->started = 1;
+                }
+                p->state     = RUNNING;
+                current_proc = p;
+                swtch(&idle.context, &p->context);
+            }
+        }
+    }
 }
 
-// Switch to scheduler.  Must hold only p->lock
-// and have changed proc->state. Saves and restores
-// intena because intena is a property of this
-// kernel thread, not this CPU. It should
-// be proc->intena and proc->noff, but that would
-// break in the few places where a lock is held but
-// there's no process.
 void sched(void)
 {
-	struct proc *p = curr_proc();
-	if (p->state == RUNNING)
-		panic("sched running");
-	swtch(&p->context, &idle.context);
+    struct proc *p = curr_proc();
+    if (p->state == RUNNING)
+        panic("sched running");
+    swtch(&p->context, &idle.context);
 }
 
-// Give up the CPU for one scheduling round.
 void yield(void)
 {
-	current_proc->state = RUNNABLE;
-	sched();
+    current_proc->state = RUNNABLE;
+    sched();
 }
 
-// Exit the current process.
+void freeproc(struct proc *p)
+{
+    p->state = UNUSED;
+    // uvmfree(p->pagetable, p->max_page);
+}
+
 void exit(int code)
 {
     struct proc *p = curr_proc();
     infof("proc %d exit with %d", p->pid, code);
-
-    if (p->pagetable && p->pagetable != kernel_pagetable) {
-        uvmunmap(p->pagetable, TRAMPOLINE, 1, 0);
-        uvmunmap(p->pagetable, TRAPFRAME,  1, 0);
-        uint64 base_page = BASE_ADDRESS / PGSIZE;
-        uint64 npages    = p->max_page - base_page;
-        if (npages > 0)
-            uvmunmap(p->pagetable, BASE_ADDRESS, npages, 1);
-        kfree(p->pagetable);
-        p->pagetable = kernel_pagetable;
-        p->max_page  = 0;
-    }
-
-    p->state = UNUSED;
+    freeproc(p);
     finished();
     sched();
 }
