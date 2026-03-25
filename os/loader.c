@@ -64,12 +64,18 @@ int run_all_app()
 {
 	for (int i = 0; i < app_num; ++i) {
 		struct proc *p = allocproc();
-		tracef("load app %d", i);
-		bin_loader(app_info_ptr[i], app_info_ptr[i + 1], p);
+		struct trapframe *trapframe = p->trapframe;
+		load_app(i, app_info_ptr);
+		uint64 entry = BASE_ADDRESS + i * MAX_APP_SIZE;
+		tracef("load app %d at %p", i, entry);
+		trapframe->epc = entry;
+		trapframe->sp = (uint64)p->ustack + USER_STACK_SIZE;
 		p->state = RUNNABLE;
-		/*
-		* LAB1: you may need to initialize your new fields of proc here
-		*/
+		
+		p->started = 0;
+		p->start_cycle = 0;
+		memset(p->syscall_times, 0, sizeof(p->syscall_times));
+
 	}
 	return 0;
 }
