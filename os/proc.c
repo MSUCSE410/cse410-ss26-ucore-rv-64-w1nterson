@@ -159,6 +159,7 @@ void sched()
 void yield()
 {
     current_proc->state = RUNNABLE;
+	add_task(current_proc);
     sched();
 }
 
@@ -240,7 +241,7 @@ int wait(int pid, int *code)
 			return -1;
 		}
 		p->state = RUNNABLE;
-		//add_task(p);
+		add_task(p);
 		sched();
 	}
 }
