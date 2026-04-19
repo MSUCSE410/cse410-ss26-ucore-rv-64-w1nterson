@@ -124,12 +124,9 @@ void scheduler()
             panic("all app are over!\n");
         }
 
-        // Update stride before running
         selected->stride += selected->pass;
-
-        tracef("switch to proc %d stride=%d", selected - pool, selected->stride);
-        selected->state  = RUNNING;
-        current_proc     = selected;
+        selected->state   = RUNNING;
+        current_proc      = selected;
 
         if (!selected->started) {
             selected->start_cycle = get_cycle();
@@ -159,7 +156,7 @@ void sched()
 void yield()
 {
     current_proc->state = RUNNABLE;
-	add_task(current_proc);
+	//add_task(current_proc);
     sched();
 }
 
@@ -199,7 +196,7 @@ int fork()
 	np->trapframe->a0 = 0;
 	np->parent = p;
 	np->state = RUNNABLE;
-	add_task(np);
+	//add_task(np);
 	return np->pid;
 }
 
@@ -241,7 +238,7 @@ int wait(int pid, int *code)
 			return -1;
 		}
 		p->state = RUNNABLE;
-		add_task(p);
+		//add_task(p);
 		sched();
 	}
 }
@@ -249,20 +246,20 @@ int wait(int pid, int *code)
 // Exit the current process.
 void exit(int code)
 {
-	struct proc *p = curr_proc();
-	p->exit_code = code;
-	debugf("proc %d exit with %d\n", p->pid, code);
-	freeproc(p);
-	if (p->parent != NULL) {
-		// Parent should `wait`
-		p->state = ZOMBIE;
-	}
-	// Set the `parent` of all children to NULL
-	struct proc *np;
-	for (np = pool; np < &pool[NPROC]; np++) {
-		if (np->parent == p) {
-			np->parent = NULL;
-		}
-	}
-	sched();
+    struct proc *p = curr_proc();
+    p->exit_code = code;
+    debugf("proc %d exit with %d\n", p->pid, code);
+    freeproc(p);
+    if (p->parent != NULL) {
+        p->state = ZOMBIE;
+        // Wake parent if it's waiting
+        if (p->parent->state == RUNNABLE || p->parent->state == SLEEPING)
+            p->parent->state = RUNNABLE;
+    }
+    struct proc *np;
+    for (np = pool; np < &pool[NPROC]; np++) {
+        if (np->parent == p)
+            np->parent = NULL;
+    }
+    sched();
 }
