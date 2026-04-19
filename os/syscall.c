@@ -5,6 +5,7 @@
 #include "syscall_ids.h"
 #include "timer.h"
 #include "trap.h"
+#include "vm.h"
 
 uint64 console_write(uint64 va, uint64 len)
 {
@@ -142,16 +143,114 @@ uint64 sys_wait(int pid, uint64 va)
 	return wait(pid, code);
 }
 
+// CH5: restored sys_spawn
 uint64 sys_spawn(uint64 va)
 {
-	// TODO: your job is to complete the sys call
-	return -1;
+	struct proc *p = curr_proc();
+	char name[200];
+	copyinstr(p->pagetable, name, va, 200);
+
+	struct inode *ip = namei(name);
+	if (ip == 0)
+		return -1;
+
+	struct proc *np = allocproc();
+	if (np == NULL) {
+		iput(ip);
+		return -1;
+	}
+
+	init_stdio(np);
+	np->parent = p;
+
+	bin_loader(ip, np);
+	iput(ip);
+
+	char *argv[2];
+	argv[0] = name;
+	argv[1] = NULL;
+	np->trapframe->a0 = push_argv(np, argv);
+
+	// stride scheduler finds it by pool scan
+	return np->pid;
 }
 
+// CH5: restored sys_set_priority
 uint64 sys_set_priority(long long prio)
 {
-	// TODO: your job is to complete the sys call
-	return -1;
+	if (prio < 2)
+		return -1;
+	struct proc *p = curr_proc();
+	p->priority = prio;
+	p->pass     = BIG_STRIDE / prio;
+	return prio;
+}
+
+// CH4: restored sys_task_info
+uint64 sys_task_info(uint64 ti_va)
+{
+	if (ti_va == 0) return -1;
+	struct proc *p = curr_proc();
+	uint64 pa = useraddr(p->pagetable, ti_va);
+	if (pa == 0) return -1;
+	TaskInfo *ti = (TaskInfo *)pa;
+	ti->status = TaskStatusRunning;
+	for (int i = 0; i < MAX_SYSCALL_NUM; i++)
+		ti->syscall_times[i] = p->syscall_times[i];
+	uint64 now = get_cycle();
+	ti->time = (p->started && now >= p->start_cycle) ?
+	           (int)((now - p->start_cycle) * 1000 / CPU_FREQ) : 0;
+	return 0;
+}
+
+// CH4: restored sys_mmap
+uint64 sys_mmap(uint64 start, uint64 len, int port, int flag, int fd)
+{
+	if (len == 0) return 0;
+	if (len > (1UL << 30)) return -1;
+	if (port & ~0x7) return -1;
+	if ((port & 0x7) == 0) return -1;
+	if (!PGALIGNED(start)) return -1;
+	len = PGROUNDUP(len);
+	int perm = PTE_U;
+	if (port & 0x1) perm |= PTE_R;
+	if (port & 0x2) perm |= PTE_W;
+	if (port & 0x4) perm |= PTE_X;
+	struct proc *p = curr_proc();
+	uint64 end = start + len;
+	for (uint64 va = start; va < end; va += PGSIZE) {
+		if (walkaddr(p->pagetable, va) != 0)
+			return -1;
+	}
+	for (uint64 va = start; va < end; va += PGSIZE) {
+		void *mem = kalloc();
+		if (mem == 0) return -1;
+		memset(mem, 0, PGSIZE);
+		if (mappages(p->pagetable, va, PGSIZE, (uint64)mem, perm) != 0) {
+			kfree(mem);
+			return -1;
+		}
+	}
+	uint64 new_max = (end - 1) / PGSIZE;
+	if (new_max > p->max_page)
+		p->max_page = new_max;
+	return 0;
+}
+
+// CH4: restored sys_munmap
+uint64 sys_munmap(uint64 start, uint64 len)
+{
+	if (len == 0) return 0;
+	if (!PGALIGNED(start)) return -1;
+	len = PGROUNDUP(len);
+	struct proc *p = curr_proc();
+	uint64 end = start + len;
+	for (uint64 va = start; va < end; va += PGSIZE) {
+		if (walkaddr(p->pagetable, va) == 0)
+			return -1;
+	}
+	uvmunmap(p->pagetable, start, len / PGSIZE, 1);
+	return 0;
 }
 
 uint64 sys_openat(uint64 va, uint64 omode, uint64 _flags)
@@ -177,19 +276,88 @@ uint64 sys_close(int fd)
 	return 0;
 }
 
-int sys_fstat(int fd,uint64 stat){
-	//TODO: your job is to complete the syscall
-	return -1;
+int sys_fstat(int fd, uint64 stat)
+{
+    if (fd < 0 || fd >= FD_BUFFER_SIZE)
+        return -1;
+    struct proc *p = curr_proc();
+    struct file *f = p->files[fd];
+    if (f == NULL || f->type != FD_INODE)
+        return -1;
+    Stat *st = (Stat *)useraddr(p->pagetable, stat);
+    if (st == 0)
+        return -1;
+    struct inode *ip = f->ip;
+    ivalid(ip);
+    st->dev   = ip->dev;
+    st->ino   = ip->inum;
+    st->mode  = (ip->type == T_DIR) ? DIR : FILE;
+    st->nlink = ip->nlink;
+    memset(st->pad, 0, sizeof(st->pad));
+    return 0;
 }
 
-int sys_linkat(int olddirfd, uint64 oldpath, int newdirfd, uint64 newpath, uint64 flags){
-	//TODO: your job is to complete the syscall
-	return -1;
+int sys_linkat(int olddirfd, uint64 oldpath, int newdirfd, uint64 newpath, uint64 flags)
+{
+    struct proc *p = curr_proc();
+    char old[MAXPATH], new[MAXPATH];
+    copyinstr(p->pagetable, old, oldpath, MAXPATH);
+    copyinstr(p->pagetable, new, newpath, MAXPATH);
+
+    // error: linking to same name
+    if (strncmp(old, new, MAXPATH) == 0)
+        return -1;
+
+    struct inode *ip = namei(old);
+    if (ip == 0)
+        return -1;
+
+    ivalid(ip);
+
+    // create new directory entry pointing to same inode
+    struct inode *dp = root_dir();
+    if (dirlink(dp, new, ip->inum) < 0) {
+        iput(ip);
+        iput(dp);
+        return -1;
+    }
+
+    // increment link count and sync to disk
+    ip->nlink++;
+    iupdate(ip);
+
+    iput(ip);
+    iput(dp);
+    return 0;
 }
 
-int sys_unlinkat(int dirfd, uint64 name, uint64 flags){
-	//TODO: your job is to complete the syscall
-	return -1;
+int sys_unlinkat(int dirfd, uint64 name, uint64 flags)
+{
+    struct proc *p = curr_proc();
+    char path[MAXPATH];
+    copyinstr(p->pagetable, path, name, MAXPATH);
+
+    struct inode *ip = namei(path);
+    if (ip == 0)
+        return -1;
+
+    ivalid(ip);
+
+    // remove the directory entry
+    struct inode *dp = root_dir();
+    if (dirunlink(dp, path) < 0) {
+        iput(ip);
+        iput(dp);
+        return -1;
+    }
+
+    // decrement link count — if it hits 0, iput will free the inode
+    ip->nlink--;
+    iupdate(ip);
+
+    iput(ip);
+    iput(dp);
+    return 0;
 }
 
 extern char trap_page[];
@@ -202,6 +370,9 @@ void syscall()
 			   trapframe->a3, trapframe->a4, trapframe->a5 };
 	tracef("syscall %d args = [%x, %x, %x, %x, %x, %x]", id, args[0],
 	       args[1], args[2], args[3], args[4], args[5]);
+	// CH4: track syscall counts
+	if (id >= 0 && id < MAX_SYSCALL_NUM)
+		curr_proc()->syscall_times[id]++;
 	switch (id) {
 	case SYS_write:
 		ret = sys_write(args[0], args[1], args[2]);
@@ -217,7 +388,6 @@ void syscall()
 		break;
 	case SYS_exit:
 		sys_exit(args[0]);
-		// __builtin_unreachable();
 	case SYS_sched_yield:
 		ret = sys_sched_yield();
 		break;
@@ -230,7 +400,7 @@ void syscall()
 	case SYS_getppid:
 		ret = sys_getppid();
 		break;
-	case SYS_clone: // SYS_fork
+	case SYS_clone:
 		ret = sys_clone();
 		break;
 	case SYS_execve:
@@ -239,17 +409,30 @@ void syscall()
 	case SYS_wait4:
 		ret = sys_wait(args[0], args[1]);
 		break;
-	case SYS_fstat:
-	    ret = sys_fstat(args[0],args[1]);
-		break;
-	case SYS_linkat:
-	    ret = sys_linkat(args[0],args[1],args[2],args[3],args[4]);
-		break;
-	case SYS_unlinkat:
-	    ret = sys_unlinkat(args[0],args[1],args[2]);
 	case SYS_spawn:
 		ret = sys_spawn(args[0]);
 		break;
+	case SYS_task_info:
+		ret = sys_task_info(args[0]);
+		break;
+	case SYS_mmap:
+		ret = sys_mmap(args[0], args[1], args[2], args[3], args[4]);
+		break;
+	case SYS_munmap:
+		ret = sys_munmap(args[0], args[1]);
+		break;
+	case SYS_setpriority:
+		ret = sys_set_priority((long long)args[0]);
+		break;
+	case SYS_fstat:
+		ret = sys_fstat(args[0], args[1]);
+		break;
+	case SYS_linkat:
+		ret = sys_linkat(args[0], args[1], args[2], args[3], args[4]);
+		break;
+	case SYS_unlinkat:
+		ret = sys_unlinkat(args[0], args[1], args[2]);
+		break;  // fixed: was missing break in ch6 framework
 	default:
 		ret = -1;
 		errorf("unknown syscall %d", id);

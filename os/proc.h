@@ -3,9 +3,13 @@
 
 #include "riscv.h"
 #include "types.h"
+#include "queue.h"
 
 #define NPROC (512)
 #define FD_BUFFER_SIZE (16)
+#define MAX_SYSCALL_NUM 500
+#define BIG_STRIDE 65536
+#define DEFAULT_PRIORITY 16
 
 struct file;
 
@@ -31,20 +35,43 @@ struct context {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+// CH4: task info types
+typedef enum {
+	TaskStatusUnInit = 0,
+	TaskStatusReady,
+	TaskStatusRunning,
+	TaskStatusExited,
+} TaskStatus;
+
+typedef struct {
+	TaskStatus status;
+	unsigned int syscall_times[MAX_SYSCALL_NUM];
+	int time;
+} TaskInfo;
+
 // Per-process state
 struct proc {
-	enum procstate state; // Process state
-	int pid; // Process ID
-	pagetable_t pagetable; // User page table
-	uint64 ustack; // Virtual address of kernel stack
-	uint64 kstack; // Virtual address of kernel stack
-	struct trapframe *trapframe; // data page for trampoline.S
-	struct context context; // swtch() here to run process
+	enum procstate state;
+	int pid;
+	pagetable_t pagetable;
+	uint64 ustack;
+	uint64 kstack;
+	struct trapframe *trapframe;
+	struct context context;
 	uint64 max_page;
-	struct proc *parent; // Parent process
+	struct proc *parent;
 	uint64 exit_code;
-	struct file *files
-		[FD_BUFFER_SIZE]; //File descriptor table, using to record the files opened by the process
+	struct file *files[FD_BUFFER_SIZE];
+
+	// CH4: task info
+	uint64 start_cycle;
+	int started;
+	unsigned int syscall_times[MAX_SYSCALL_NUM];
+
+	// CH5: stride scheduling
+	uint64 stride;
+	uint64 pass;
+	long long priority;
 };
 
 int cpuid();
