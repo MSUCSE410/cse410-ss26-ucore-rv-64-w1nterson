@@ -255,6 +255,9 @@ void syscall()
 	case SYS_munmap:
 		ret = sys_munmap(args[0], args[1]);
 		break;
+	case SYS_setpriority:
+    	ret = sys_set_priority((long long)args[0]);
+    	break;
 	default:
 		ret = -1;
 		errorf("unknown syscall %d", id);
