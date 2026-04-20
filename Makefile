@@ -81,7 +81,7 @@ $(HEADER_DEP): $(BUILDDIR)/$K/%.d : $K/%.c
         sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
         rm -f $@.$$$$
 
-INIT_PROC ?= ch6_usertest
+INIT_PROC ?= usershell
 
 build: build/kernel
 
